@@ -2,20 +2,22 @@ module Result = {
   type t('good, 'bad) =
     | Ok('good)
     | Err('bad);
-  let map = (result: t('a, 'err), fn: 'a => 'c) : t('c, 'err) =>
+
+  let map = (result: t('a, 'err), fn: 'a => 'c): t('c, 'err) =>
     switch (result) {
     | Ok(x) => Ok(fn(x))
     | Err(x) => Err(x)
     };
+
   let map2 =
-      (r1: t('a, 'err), r2: t('b, 'err), fn: ('a, 'b) => 'c)
-      : t('c, 'err) =>
+      (r1: t('a, 'err), r2: t('b, 'err), fn: ('a, 'b) => 'c): t('c, 'err) =>
     switch (r1, r2) {
     | (Ok(x), Ok(y)) => Ok(fn(x, y))
     | (Err(x), _)
     | (_, Err(x)) => Err(x)
     };
-  let andThen = (r1: t('a, 'err), fn: 'a => t('b, 'err)) : t('b, 'err) =>
+
+  let andThen = (r1: t('a, 'err), fn: 'a => t('b, 'err)): t('b, 'err) =>
     switch (r1) {
     | Ok(x) => fn(x)
     | Err(x) => Err(x)
@@ -43,6 +45,7 @@ module Ast = {
     trueBranch: expression,
     falseBranch: expression,
   };
+
   let example: expression =
     Fn({
       param: "x",
@@ -64,13 +67,15 @@ module Type = {
     from: t,
     to_: t,
   };
-  let rec contains = (t: t, name: string) : bool =>
+
+  let rec contains = (t: t, name: string): bool =>
     switch (t) {
     | Named(_) => false
     | Var(n) => n === name
     | Fun({from, to_}) => contains(from, name) || contains(to_, name)
     };
-  let rec toString = (t: t) : string =>
+
+  let rec toString = (t: t): string =>
     switch (t) {
     | Named(n) => n
     | Var(n) => n
@@ -81,38 +86,47 @@ module Type = {
 
 module TypeCheck = {
   module Map = Belt.Map.String;
+
   type error =
     | CircularReference(string)
     | TypeMismatch(string)
     | UnboundVariable(string)
     | UnexpectedError(string)
     | NotImplemented;
+
   module Context = {
     type t = {
       /* Mutable and global to all context for ease of use */
       mutable nextTVar: float,
       env: Map.t(Type.t),
     };
+
     let get = Map.get;
-    let newTVar = (ctx: t) : Type.t => {
+
+    let newTVar = (ctx: t): Type.t => {
       let tvar = Type.Var("T" ++ string_of_float(ctx.nextTVar));
       ctx.nextTVar = ctx.nextTVar +. 1.;
       tvar;
     };
-    let newBinding = (ctx: t, name: string, tvar: Type.t) : t => {
+
+    let newBinding = (ctx: t, name: string, tvar: Type.t): t => {
       ...ctx,
       env: Map.set(ctx.env, name, tvar),
     };
-    let mapEnv = ({env} as ctx: t, fn: Type.t => Type.t) : t => {
+
+    let mapEnv = ({env} as ctx: t, fn: Type.t => Type.t): t => {
       ...ctx,
       env: Map.map(env, type_ => fn(type_)),
     };
   };
+
   module Substitution = {
     type t = Map.t(Type.t);
+
     let empty = Map.empty;
     let get = Map.get;
-    let toString = (m: t) : string =>
+
+    let toString = (m: t): string =>
       "{"
       ++ (
         Map.toArray(m)
@@ -122,13 +136,14 @@ module TypeCheck = {
         |> Array.fold_left((r, s) => r ++ " " ++ s, "")
       )
       ++ "}";
+
     /*
      Replace the type variables in a type that are present in the given
      substitution and return the type with those variables substituted
      eg. Applying the substitution {"a": Bool, "b": Int} to a type (a -> b)
      will give type (Bool -> Int)
      */
-    let rec applySubstitutionToType = (subst: t, type_: Type.t) : Type.t =>
+    let rec applySubstitutionToType = (subst: t, type_: Type.t): Type.t =>
       switch (type_) {
       | Named(_) => type_
       | Var(name) =>
@@ -142,9 +157,11 @@ module TypeCheck = {
           to_: applySubstitutionToType(subst, to_),
         })
       };
-    let applySubstitutionToCtx = (subst: t, ctx: Context.t) : Context.t =>
+
+    let applySubstitutionToCtx = (subst: t, ctx: Context.t): Context.t =>
       Context.mapEnv(ctx, applySubstitutionToType(subst));
-    let varBind = (name: string, t: Type.t) : Result.t(t, error) =>
+
+    let varBind = (name: string, t: Type.t): Result.t(t, error) =>
       switch (t) {
       | Var(n) when n == name => Result.Ok(empty)
       | Var(_) => Result.Ok(Map.set(empty, name, t))
@@ -152,10 +169,12 @@ module TypeCheck = {
         Result.Err(CircularReference(Type.toString(t)))
       | _ => Result.Ok(Map.set(empty, name, t))
       };
-    let compose = (s1: t, s2: t) : t =>
+
+    let compose = (s1: t, s2: t): t =>
       Map.map(s2, type_ => applySubstitutionToType(s1, type_))
       |> Map.merge(s1, _, (_key, _t1, t2) => t2);
-    let rec unify = (t1: Type.t, t2: Type.t) : Result.t(t, error) =>
+
+    let rec unify = (t1: Type.t, t2: Type.t): Result.t(t, error) =>
       switch (t1, t2) {
       | (Type.Named(n1), Type.Named(n2)) when n1 === n2 => Result.Ok(empty)
       | (Type.Var(v1), _) => varBind(v1, t2)
@@ -185,6 +204,7 @@ module TypeCheck = {
         )
       };
   };
+
   let rec infer =
           ({env} as ctx: Context.t, e: Ast.expression)
           : Result.t((Type.t, Substitution.t), error) =>
@@ -199,6 +219,7 @@ module TypeCheck = {
     | Ast.Fn({param, body}) =>
       let newTVar = Context.newTVar(ctx);
       let newCtx = Context.newBinding(ctx, param, newTVar);
+
       infer(newCtx, body)
       |> Result.map(_, ((bodyType, subst)) =>
            (
@@ -252,8 +273,9 @@ module TypeCheck = {
     };
 };
 
-let test = (ctx, ast) : unit => {
+let test = (ctx, ast): unit => {
   let res = TypeCheck.infer(ctx, ast);
+
   switch (res) {
   | Result.Ok((t, subst)) =>
     Js.log3(
@@ -274,7 +296,7 @@ let test = (ctx, ast) : unit => {
   };
 };
 
-let ctx = () : TypeCheck.Context.t => {
+let ctx = (): TypeCheck.Context.t => {
   nextTVar: 0.,
   env:
     Belt.Map.String.fromArray([|
